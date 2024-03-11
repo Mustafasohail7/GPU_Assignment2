@@ -7,10 +7,10 @@
 #include <Eigen/Dense>
 #include <numeric> //std::iota
 
-extern Eigen::MatrixXf cudaMatrixMul(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N);
-extern Eigen::MatrixXf cudaMatrixScalarMul(const Eigen::MatrixXf &M, float scalar);
-extern Eigen::MatrixXf cudaMatrixAdd(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N);
-extern Eigen::MatrixXf cudaMatrixSub(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N);
+extern Eigen::MatrixXf HostMatrixMultiply(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N);
+extern Eigen::MatrixXf HostMatrixScalarMultiply(const Eigen::MatrixXf &M, float scalar);
+extern Eigen::MatrixXf HostMatrixAddition(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N);
+extern Eigen::MatrixXf HostMatrixSubtraction(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N);
 
 void printMatrixSize(const std::string msg, const Eigen::MatrixXf &m)
 {
@@ -38,15 +38,15 @@ public:
   {
     // Eigen::MatrixXf::Random returns values from [-1,1] we should scale it to [-0.5,0.5]
     // Do the matrix multiplication on the GPU
-    weights = cudaMatrixScalarMul(Eigen::MatrixXf::Random(inputSize, outputSize), 0.5f);
-    bias = cudaMatrixScalarMul(Eigen::MatrixXf::Random(1, outputSize), 0.5f);
+    weights = HostMatrixScalarMultiply(Eigen::MatrixXf::Random(inputSize, outputSize), 0.5f);
+    bias = HostMatrixScalarMultiply(Eigen::MatrixXf::Random(1, outputSize), 0.5f);
   }
 
   Eigen::MatrixXf forwardPropagation(Eigen::MatrixXf &input)
   {
     this->input = input;
     // Do the matrix multiplication on the GPU
-    this->output = cudaMatrixAdd(cudaMatrixMul(input, weights), bias);
+    this->output = HostMatrixAddition(HostMatrixMultiply(input, weights), bias);
     return this->output;
   }
 
@@ -54,12 +54,12 @@ public:
   Eigen::MatrixXf backwardPropagation(Eigen::MatrixXf &outputError, float learningRate)
   {
     // Do the matrix multiplication on the GPU
-    Eigen::MatrixXf inputError = cudaMatrixMul(outputError, weights.transpose());
-    Eigen::MatrixXf weightsError = cudaMatrixMul(input.transpose(), outputError);
+    Eigen::MatrixXf inputError = HostMatrixMultiply(outputError, weights.transpose());
+    Eigen::MatrixXf weightsError = HostMatrixMultiply(input.transpose(), outputError);
 
     // update parameters on the GPU
-    weights = cudaMatrixSub(weights, cudaMatrixScalarMul(weightsError, learningRate));
-    bias = cudaMatrixSub(bias, cudaMatrixScalarMul(outputError, learningRate));
+    weights = HostMatrixSubtraction(weights, HostMatrixScalarMultiply(weightsError, learningRate));
+    bias = HostMatrixSubtraction(bias, HostMatrixScalarMultiply(outputError, learningRate));
 
     return inputError;
   }

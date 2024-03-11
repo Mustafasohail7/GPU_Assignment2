@@ -2,53 +2,65 @@
 #include <Eigen/Dense>
 #include <cuda_runtime.h>
 
-inline cudaError_t checkCudaErr(cudaError_t err, const char *msg)
+__global__ void MatrixScalarMultiply(float *M, float N, float *P, int rows, int cols)
 {
-    if (err != cudaSuccess)
+    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    int col = blockIdx.y * blockDim.y + threadIdx.y;
+    if (row < rows && col < cols)
     {
-        fprintf(stderr, "CUDA Runtime error at %s: %s\n", msg, cudaGetErrorString(err));
+        float result = M[col * rows + row] * N;
+        P[col * rows + row] = result;
     }
-    return err;
 }
 
-__global__ void cudaMatrixMulKernel(float *M, float *N, float *P, int rows,
+__global__ void DeviceMatrixMultiply(float *M, float *N, float *P, int rows,
                                     int cols, int common)
 {
     int row = blockIdx.x * blockDim.x + threadIdx.x;
     int col = blockIdx.y * blockDim.y + threadIdx.y;
-    if ((row < rows) && (col < cols))
+
+    if (row < rows && col < cols)
     {
         float Pvalue = 0;
-        // each thread computes one element of the block sub-matrix
+
         for (int k = 0; k < common; ++k)
         {
-            Pvalue += M[k * rows + row] * N[col * common + k];
+            float Mvalue = M[k * rows + row];
+            float Nvalue = N[col * common + k];
+            Pvalue += Mvalue * Nvalue;
         }
+
         P[col * rows + row] = Pvalue;
     }
 }
 
-__global__ void cudaMatrixScalarMulKernel(float *M, float N, float *P, int rows, int cols)
+__global__ void DeviceMatrixAddition(float *M, float *N, float *P, int rows, int cols)
 {
-    int row = blockIdx.x * blockDim.x + threadIdx.x;
-    int col = blockIdx.y * blockDim.y + threadIdx.y;
-    if ((row < rows) && (col < cols))
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    if (col < cols && row < rows)
     {
-        P[col * rows + row] = M[col * rows + row] * N;
+        int index = col * rows + row;
+        P[index] = M[index] + N[index];
     }
 }
 
-Eigen::MatrixXf cudaMatrixMul(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N)
+__global__ void DeviceMatrixSubtraction(float *M, float *N, float *P, int rows, int cols)
+{
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    if (col < cols && row < rows)
+    {
+        int index = col * rows + row;
+        P[index] = M[index] - N[index];
+    }
+}
+
+Eigen::MatrixXf HostMatrixMultiply(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N)
 {
     int rows = M.rows();
     int cols = N.cols();
-    if (M.cols() != N.rows())
-    {
-        std::cout << M.rows() << "," << M.cols() << std::endl;
-        std::cout << N.rows() << "," << N.cols() << std::endl;
-        std::cout << "Matrix dimensions are not compatible for multiplication" << std::endl;
-        return Eigen::MatrixXf::Zero(1, 1);
-    }
+
     int common = M.cols();
     float *d_M, *d_N, *d_P;
     int size_M = rows * common * sizeof(float);
@@ -58,17 +70,18 @@ Eigen::MatrixXf cudaMatrixMul(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N
     cudaMalloc((void **)&d_M, size_M);
     cudaMalloc((void **)&d_N, size_N);
     cudaMalloc((void **)&d_P, size_P);
-    checkCudaErr(cudaMemcpy(d_M, M.data(), size_M, cudaMemcpyHostToDevice), "Memcpy M");
-    checkCudaErr(cudaMemcpy(d_N, N.data(), size_N, cudaMemcpyHostToDevice), "Memcpy N");
+    cudaMemcpy(d_M, M.data(), size_M, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_N, N.data(), size_N, cudaMemcpyHostToDevice);
 
     dim3 dimBlock(16, 16);
     dim3 dimGrid((rows + dimBlock.x - 1) / dimBlock.x, (cols + dimBlock.y - 1) / dimBlock.y);
-    cudaMatrixMulKernel<<<dimGrid, dimBlock>>>(d_M, d_N, d_P, rows, cols, common);
-    checkCudaErr(cudaDeviceSynchronize(), "Syncronization");
-    checkCudaErr(cudaGetLastError(), "GPU Error");
+    DeviceMatrixMultiply<<<dimGrid, dimBlock>>>(d_M, d_N, d_P, rows, cols, common);
+    cudaDeviceSynchronize();
+    cudaGetLastError();
 
     Eigen::MatrixXf P(rows, cols);
-    checkCudaErr(cudaMemcpy(P.data(), d_P, size_P, cudaMemcpyDeviceToHost), "Memcpy P");
+    cudaMemcpy(P.data(), d_P, size_P, cudaMemcpyDeviceToHost);
+
     cudaFree(d_M);
     cudaFree(d_N);
     cudaFree(d_P);
@@ -76,7 +89,7 @@ Eigen::MatrixXf cudaMatrixMul(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N
     return P;
 }
 
-Eigen::MatrixXf cudaMatrixScalarMul(const Eigen::MatrixXf &M, float N)
+Eigen::MatrixXf HostMatrixScalarMultiply(const Eigen::MatrixXf &M, float N)
 {
     int rows = M.rows();
     int cols = M.cols();
@@ -85,33 +98,24 @@ Eigen::MatrixXf cudaMatrixScalarMul(const Eigen::MatrixXf &M, float N)
     int size_P = rows * cols * sizeof(float);
     cudaMalloc((void **)&d_M, size_M);
     cudaMalloc((void **)&d_P, size_P);
-    checkCudaErr(cudaMemcpy(d_M, M.data(), size_M, cudaMemcpyHostToDevice), "Memcpy M");
+    cudaMemcpy(d_M, M.data(), size_M, cudaMemcpyHostToDevice);
 
     dim3 dimBlock(16, 16);
     dim3 dimGrid((rows + dimBlock.x - 1) / dimBlock.x, (cols + dimBlock.y - 1) / dimBlock.y);
-    cudaMatrixScalarMulKernel<<<dimGrid, dimBlock>>>(d_M, N, d_P, rows, cols);
-    checkCudaErr(cudaDeviceSynchronize(), "Syncronization");
-    checkCudaErr(cudaGetLastError(), "GPU Error");
+    DeviceMatrixScalarMultiply<<<dimGrid, dimBlock>>>(d_M, N, d_P, rows, cols);
+    cudaDeviceSynchronize();
+    cudaGetLastError();
 
     Eigen::MatrixXf P(rows, cols);
-    checkCudaErr(cudaMemcpy(P.data(), d_P, size_P, cudaMemcpyDeviceToHost), "Memcpy P");
+    cudaMemcpy(P.data(), d_P, size_P, cudaMemcpyDeviceToHost);
     cudaFree(d_M);
     cudaFree(d_P);
 
     return P;
 }
 
-__global__ void cudaMatrixAddKernel(float *M, float *N, float *P, int rows, int cols)
-{
-    int row = blockIdx.x * blockDim.x + threadIdx.x;
-    int col = blockIdx.y * blockDim.y + threadIdx.y;
-    if ((row < rows) && (col < cols))
-    {
-        P[col * rows + row] = M[col * rows + row] + N[col * rows + row];
-    }
-}
 
-Eigen::MatrixXf cudaMatrixAdd(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N)
+Eigen::MatrixXf HostMatrixAddition(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N)
 {
     int rows = M.rows();
     int cols = M.cols();
@@ -121,17 +125,17 @@ Eigen::MatrixXf cudaMatrixAdd(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N
     cudaMalloc((void **)&d_M, size_M);
     cudaMalloc((void **)&d_N, size_M);
     cudaMalloc((void **)&d_P, size_P);
-    checkCudaErr(cudaMemcpy(d_M, M.data(), size_M, cudaMemcpyHostToDevice), "Memcpy M");
-    checkCudaErr(cudaMemcpy(d_N, N.data(), size_M, cudaMemcpyHostToDevice), "Memcpy N");
+    cudaMemcpy(d_M, M.data(), size_M, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_N, N.data(), size_M, cudaMemcpyHostToDevice);
 
     dim3 dimBlock(16, 16);
     dim3 dimGrid((rows + dimBlock.x - 1) / dimBlock.x, (cols + dimBlock.y - 1) / dimBlock.y);
-    cudaMatrixAddKernel<<<dimGrid, dimBlock>>>(d_M, d_N, d_P, rows, cols);
-    checkCudaErr(cudaDeviceSynchronize(), "Syncronization");
-    checkCudaErr(cudaGetLastError(), "GPU Error");
+    DeviceMatrixAddition<<<dimGrid, dimBlock>>>(d_M, d_N, d_P, rows, cols);
+    cudaDeviceSynchronize();
+    cudaGetLastError();
 
     Eigen::MatrixXf P(rows, cols);
-    checkCudaErr(cudaMemcpy(P.data(), d_P, size_P, cudaMemcpyDeviceToHost), "Memcpy P");
+    cudaMemcpy(P.data(), d_P, size_P, cudaMemcpyDeviceToHost);
     cudaFree(d_M);
     cudaFree(d_N);
     cudaFree(d_P);
@@ -139,17 +143,9 @@ Eigen::MatrixXf cudaMatrixAdd(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N
     return P;
 }
 
-__global__ void cudaMatrixSubKernel(float *M, float *N, float *P, int rows, int cols)
-{
-    int row = blockIdx.x * blockDim.x + threadIdx.x;
-    int col = blockIdx.y * blockDim.y + threadIdx.y;
-    if ((row < rows) && (col < cols))
-    {
-        P[col * rows + row] = M[col * rows + row] - N[col * rows + row];
-    }
-}
 
-Eigen::MatrixXf cudaMatrixSub(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N)
+
+Eigen::MatrixXf HostMatrixSubtraction(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N)
 {
     int rows = M.rows();
     int cols = M.cols();
@@ -159,17 +155,17 @@ Eigen::MatrixXf cudaMatrixSub(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N
     cudaMalloc((void **)&d_M, size_M);
     cudaMalloc((void **)&d_N, size_M);
     cudaMalloc((void **)&d_P, size_P);
-    checkCudaErr(cudaMemcpy(d_M, M.data(), size_M, cudaMemcpyHostToDevice), "Memcpy M");
-    checkCudaErr(cudaMemcpy(d_N, N.data(), size_M, cudaMemcpyHostToDevice), "Memcpy N");
+    cudaMemcpy(d_M, M.data(), size_M, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_N, N.data(), size_M, cudaMemcpyHostToDevice);
 
     dim3 dimBlock(16, 16);
     dim3 dimGrid((rows + dimBlock.x - 1) / dimBlock.x, (cols + dimBlock.y - 1) / dimBlock.y);
-    cudaMatrixSubKernel<<<dimGrid, dimBlock>>>(d_M, d_N, d_P, rows, cols);
-    checkCudaErr(cudaDeviceSynchronize(), "Syncronization");
-    checkCudaErr(cudaGetLastError(), "GPU Error");
+    DeviceMatrixSubtraction<<<dimGrid, dimBlock>>>(d_M, d_N, d_P, rows, cols);
+    cudaDeviceSynchronize();
+    cudaGetLastError();
 
     Eigen::MatrixXf P(rows, cols);
-    checkCudaErr(cudaMemcpy(P.data(), d_P, size_P, cudaMemcpyDeviceToHost), "Memcpy P");
+    cudaMemcpy(P.data(), d_P, size_P, cudaMemcpyDeviceToHost);
     cudaFree(d_M);
     cudaFree(d_N);
     cudaFree(d_P);
