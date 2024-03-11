@@ -2,7 +2,7 @@
 #include <Eigen/Dense>
 #include <cuda_runtime.h>
 
-__global__ void cudaMatrixMulKernel(float *M, float *N, float *P, int rows,
+__global__ void DeviceMatrixMultiply(float *M, float *N, float *P, int rows,
                                     int cols, int common)
 {
     int row = blockIdx.x * blockDim.x + threadIdx.x;
@@ -19,7 +19,7 @@ __global__ void cudaMatrixMulKernel(float *M, float *N, float *P, int rows,
     }
 }
 
-__global__ void cudaMatrixScalarMulKernel(float *M, float N, float *P, int rows, int cols)
+__global__ void DeviceMatrixScalarMultiply(float *M, float N, float *P, int rows, int cols)
 {
     int row = blockIdx.x * blockDim.x + threadIdx.x;
     int col = blockIdx.y * blockDim.y + threadIdx.y;
@@ -29,7 +29,7 @@ __global__ void cudaMatrixScalarMulKernel(float *M, float N, float *P, int rows,
     }
 }
 
-Eigen::MatrixXf cudaMatrixMul(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N)
+Eigen::MatrixXf HostMatrixMultiply(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N)
 {
     int rows = M.rows();
     int cols = N.cols();
@@ -54,7 +54,7 @@ Eigen::MatrixXf cudaMatrixMul(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N
 
     dim3 dimBlock(16, 16);
     dim3 dimGrid((rows + dimBlock.x - 1) / dimBlock.x, (cols + dimBlock.y - 1) / dimBlock.y);
-    cudaMatrixMulKernel<<<dimGrid, dimBlock>>>(d_M, d_N, d_P, rows, cols, common);
+    DeviceMatrixMultiply<<<dimGrid, dimBlock>>>(d_M, d_N, d_P, rows, cols, common);
     cudaDeviceSynchronize();
 
     Eigen::MatrixXf P(rows, cols);
@@ -66,7 +66,7 @@ Eigen::MatrixXf cudaMatrixMul(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N
     return P;
 }
 
-Eigen::MatrixXf cudaMatrixScalarMul(const Eigen::MatrixXf &M, float N)
+Eigen::MatrixXf HostMatrixScalarMultiply(const Eigen::MatrixXf &M, float N)
 {
     int rows = M.rows();
     int cols = M.cols();
@@ -79,7 +79,7 @@ Eigen::MatrixXf cudaMatrixScalarMul(const Eigen::MatrixXf &M, float N)
 
     dim3 dimBlock(16, 16);
     dim3 dimGrid((rows + dimBlock.x - 1) / dimBlock.x, (cols + dimBlock.y - 1) / dimBlock.y);
-    cudaMatrixScalarMulKernel<<<dimGrid, dimBlock>>>(d_M, N, d_P, rows, cols);
+    DeviceMatrixScalarMultiply<<<dimGrid, dimBlock>>>(d_M, N, d_P, rows, cols);
     cudaDeviceSynchronize();
 
     Eigen::MatrixXf P(rows, cols);
@@ -90,7 +90,7 @@ Eigen::MatrixXf cudaMatrixScalarMul(const Eigen::MatrixXf &M, float N)
     return P;
 }
 
-__global__ void cudaMatrixAddKernel(float *M, float *N, float *P, int rows, int cols)
+__global__ void DeviceMatrixAddition(float *M, float *N, float *P, int rows, int cols)
 {
     int row = blockIdx.x * blockDim.x + threadIdx.x;
     int col = blockIdx.y * blockDim.y + threadIdx.y;
@@ -100,7 +100,7 @@ __global__ void cudaMatrixAddKernel(float *M, float *N, float *P, int rows, int 
     }
 }
 
-Eigen::MatrixXf cudaMatrixAdd(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N)
+Eigen::MatrixXf HostMatrixAddition(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N)
 {
     int rows = M.rows();
     int cols = M.cols();
@@ -115,7 +115,7 @@ Eigen::MatrixXf cudaMatrixAdd(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N
 
     dim3 dimBlock(16, 16);
     dim3 dimGrid((rows + dimBlock.x - 1) / dimBlock.x, (cols + dimBlock.y - 1) / dimBlock.y);
-    cudaMatrixAddKernel<<<dimGrid, dimBlock>>>(d_M, d_N, d_P, rows, cols);
+    DeviceMatrixAddition<<<dimGrid, dimBlock>>>(d_M, d_N, d_P, rows, cols);
     cudaDeviceSynchronize();
 
     Eigen::MatrixXf P(rows, cols);
@@ -127,7 +127,7 @@ Eigen::MatrixXf cudaMatrixAdd(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N
     return P;
 }
 
-__global__ void cudaMatrixSubKernel(float *M, float *N, float *P, int rows, int cols)
+__global__ void DeviceMatrixSubtraction(float *M, float *N, float *P, int rows, int cols)
 {
     int row = blockIdx.x * blockDim.x + threadIdx.x;
     int col = blockIdx.y * blockDim.y + threadIdx.y;
@@ -137,7 +137,7 @@ __global__ void cudaMatrixSubKernel(float *M, float *N, float *P, int rows, int 
     }
 }
 
-Eigen::MatrixXf cudaMatrixSub(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N)
+Eigen::MatrixXf HostMatrixSubtraction(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N)
 {
     int rows = M.rows();
     int cols = M.cols();
@@ -152,7 +152,7 @@ Eigen::MatrixXf cudaMatrixSub(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N
 
     dim3 dimBlock(16, 16);
     dim3 dimGrid((rows + dimBlock.x - 1) / dimBlock.x, (cols + dimBlock.y - 1) / dimBlock.y);
-    cudaMatrixSubKernel<<<dimGrid, dimBlock>>>(d_M, d_N, d_P, rows, cols);
+    DeviceMatrixSubtraction<<<dimGrid, dimBlock>>>(d_M, d_N, d_P, rows, cols);
     cudaDeviceSynchronize();
 
 
