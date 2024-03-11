@@ -36,8 +36,6 @@ class GPUDenseLayer : public GPULayer
 public:
   GPUDenseLayer(int inputSize, int outputSize)
   {
-    // Eigen::MatrixXf::Random returns values from [-1,1] we should scale it to [-0.5,0.5]
-    // Do the matrix multiplication on the GPU
     weights = HostMatrixScalarMultiply(Eigen::MatrixXf::Random(inputSize, outputSize), 0.5f);
     bias = HostMatrixScalarMultiply(Eigen::MatrixXf::Random(1, outputSize), 0.5f);
   }
@@ -45,19 +43,15 @@ public:
   Eigen::MatrixXf forwardPropagation(Eigen::MatrixXf &input)
   {
     this->input = input;
-    // Do the matrix multiplication on the GPU
     this->output = HostMatrixAddition(HostMatrixMultiply(input, weights), bias);
     return this->output;
   }
 
-  // computes dE/dW, dE/dB for a given outputError = dE/dY. Returns input_error = dE/dX.
   Eigen::MatrixXf backwardPropagation(Eigen::MatrixXf &outputError, float learningRate)
   {
-    // Do the matrix multiplication on the GPU
     Eigen::MatrixXf inputError = HostMatrixMultiply(outputError, weights.transpose());
     Eigen::MatrixXf weightsError = HostMatrixMultiply(input.transpose(), outputError);
 
-    // update parameters on the GPU
     weights = HostMatrixSubtraction(weights, HostMatrixScalarMultiply(weightsError, learningRate));
     bias = HostMatrixSubtraction(bias, HostMatrixScalarMultiply(outputError, learningRate));
 
