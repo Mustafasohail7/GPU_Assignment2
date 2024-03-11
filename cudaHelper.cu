@@ -2,15 +2,6 @@
 #include <Eigen/Dense>
 #include <cuda_runtime.h>
 
-inline cudaError_t checkCudaErr(cudaError_t err, const char *msg)
-{
-    if (err != cudaSuccess)
-    {
-        fprintf(stderr, "CUDA Runtime error at %s: %s\n", msg, cudaGetErrorString(err));
-    }
-    return err;
-}
-
 __global__ void cudaMatrixMulKernel(float *M, float *N, float *P, int rows,
                                     int cols, int common)
 {
@@ -58,14 +49,13 @@ Eigen::MatrixXf cudaMatrixMul(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N
     cudaMalloc((void **)&d_M, size_M);
     cudaMalloc((void **)&d_N, size_N);
     cudaMalloc((void **)&d_P, size_P);
-    checkCudaErr(cudaMemcpy(d_M, M.data(), size_M, cudaMemcpyHostToDevice), "Memcpy M");
-    checkCudaErr(cudaMemcpy(d_N, N.data(), size_N, cudaMemcpyHostToDevice), "Memcpy N");
+    cudaMemcpy(d_M, M.data(), size_M, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_N, N.data(), size_N, cudaMemcpyHostToDevice);
 
     dim3 dimBlock(16, 16);
     dim3 dimGrid((rows + dimBlock.x - 1) / dimBlock.x, (cols + dimBlock.y - 1) / dimBlock.y);
     cudaMatrixMulKernel<<<dimGrid, dimBlock>>>(d_M, d_N, d_P, rows, cols, common);
-    checkCudaErr(cudaDeviceSynchronize(), "Syncronization");
-    checkCudaErr(cudaGetLastError(), "GPU Error");
+    cudaDeviceSynchronize();
 
     Eigen::MatrixXf P(rows, cols);
     checkCudaErr(cudaMemcpy(P.data(), d_P, size_P, cudaMemcpyDeviceToHost), "Memcpy P");
@@ -85,16 +75,15 @@ Eigen::MatrixXf cudaMatrixScalarMul(const Eigen::MatrixXf &M, float N)
     int size_P = rows * cols * sizeof(float);
     cudaMalloc((void **)&d_M, size_M);
     cudaMalloc((void **)&d_P, size_P);
-    checkCudaErr(cudaMemcpy(d_M, M.data(), size_M, cudaMemcpyHostToDevice), "Memcpy M");
+    cudaMemcpy(d_M, M.data(), size_M, cudaMemcpyHostToDevice);
 
     dim3 dimBlock(16, 16);
     dim3 dimGrid((rows + dimBlock.x - 1) / dimBlock.x, (cols + dimBlock.y - 1) / dimBlock.y);
     cudaMatrixScalarMulKernel<<<dimGrid, dimBlock>>>(d_M, N, d_P, rows, cols);
-    checkCudaErr(cudaDeviceSynchronize(), "Syncronization");
-    checkCudaErr(cudaGetLastError(), "GPU Error");
+    cudaDeviceSynchronize();
 
     Eigen::MatrixXf P(rows, cols);
-    checkCudaErr(cudaMemcpy(P.data(), d_P, size_P, cudaMemcpyDeviceToHost), "Memcpy P");
+    cudaMemcpy(P.data(), d_P, size_P, cudaMemcpyDeviceToHost);
     cudaFree(d_M);
     cudaFree(d_P);
 
@@ -121,17 +110,16 @@ Eigen::MatrixXf cudaMatrixAdd(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N
     cudaMalloc((void **)&d_M, size_M);
     cudaMalloc((void **)&d_N, size_M);
     cudaMalloc((void **)&d_P, size_P);
-    checkCudaErr(cudaMemcpy(d_M, M.data(), size_M, cudaMemcpyHostToDevice), "Memcpy M");
-    checkCudaErr(cudaMemcpy(d_N, N.data(), size_M, cudaMemcpyHostToDevice), "Memcpy N");
+    cudaMemcpy(d_M, M.data(), size_M, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_N, N.data(), size_M, cudaMemcpyHostToDevice);
 
     dim3 dimBlock(16, 16);
     dim3 dimGrid((rows + dimBlock.x - 1) / dimBlock.x, (cols + dimBlock.y - 1) / dimBlock.y);
     cudaMatrixAddKernel<<<dimGrid, dimBlock>>>(d_M, d_N, d_P, rows, cols);
-    checkCudaErr(cudaDeviceSynchronize(), "Syncronization");
-    checkCudaErr(cudaGetLastError(), "GPU Error");
+    cudaDeviceSynchronize();
 
     Eigen::MatrixXf P(rows, cols);
-    checkCudaErr(cudaMemcpy(P.data(), d_P, size_P, cudaMemcpyDeviceToHost), "Memcpy P");
+    cudaMemcpy(P.data(), d_P, size_P, cudaMemcpyDeviceToHost);
     cudaFree(d_M);
     cudaFree(d_N);
     cudaFree(d_P);
@@ -159,17 +147,17 @@ Eigen::MatrixXf cudaMatrixSub(const Eigen::MatrixXf &M, const Eigen::MatrixXf &N
     cudaMalloc((void **)&d_M, size_M);
     cudaMalloc((void **)&d_N, size_M);
     cudaMalloc((void **)&d_P, size_P);
-    checkCudaErr(cudaMemcpy(d_M, M.data(), size_M, cudaMemcpyHostToDevice), "Memcpy M");
-    checkCudaErr(cudaMemcpy(d_N, N.data(), size_M, cudaMemcpyHostToDevice), "Memcpy N");
+    cudaMemcpy(d_M, M.data(), size_M, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_N, N.data(), size_M, cudaMemcpyHostToDevice);
 
     dim3 dimBlock(16, 16);
     dim3 dimGrid((rows + dimBlock.x - 1) / dimBlock.x, (cols + dimBlock.y - 1) / dimBlock.y);
     cudaMatrixSubKernel<<<dimGrid, dimBlock>>>(d_M, d_N, d_P, rows, cols);
-    checkCudaErr(cudaDeviceSynchronize(), "Syncronization");
-    checkCudaErr(cudaGetLastError(), "GPU Error");
+    cudaDeviceSynchronize();
+
 
     Eigen::MatrixXf P(rows, cols);
-    checkCudaErr(cudaMemcpy(P.data(), d_P, size_P, cudaMemcpyDeviceToHost), "Memcpy P");
+    cudaMemcpy(P.data(), d_P, size_P, cudaMemcpyDeviceToHost);
     cudaFree(d_M);
     cudaFree(d_N);
     cudaFree(d_P);
